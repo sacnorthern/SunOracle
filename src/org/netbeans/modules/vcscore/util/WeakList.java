@@ -14,6 +14,13 @@
 /*
  *  Downloaded from http://alvinalexander.com/java/jwarehouse/netbeans-src/vcscore/src/org/netbeans/modules/vcscore/util/WeakList.java.shtml
  *  retrieved Sept 2016.
+ *
+ *  Changes by Brian Witt, Sept 2016.
+ *  <ul>
+ *    <li> Added @Override annotation.
+ *    <li> Changed into parameterized class-type.
+ *    <li> {@link #get()) and {@link #removeReleased()} are {@code synchronized} methods.
+ *  </ul
  */
 
 package org.netbeans.modules.vcscore.util;
@@ -25,48 +32,53 @@ import java.util.Collection;
 import java.util.Iterator;
 
 /**
- * A simple list wich holds only weak references to the original objects.
+ * A simple list that holds only weak references to the original objects.
  * @author  Martin Entlicher
+ * @param <T> type inside the array-list.
  */
-public class WeakList extends AbstractList {
+public class WeakList<T> extends AbstractList<T> {
 
-    private ArrayList items;
+    private ArrayList< WeakReference<T> > items;
 
     /** Creates new WeakList */
     public WeakList() {
-        items = new ArrayList();
+        items = new ArrayList< WeakReference<T> >();
     }
 
     public WeakList(Collection c) {
-        items = new ArrayList();
+        items = new ArrayList< WeakReference<T> >();
         addAll(0, c);
     }
 
-    public void add(int index, Object element) {
+    @Override
+    public void add(int index, T element) {
         items.add(index, new WeakReference(element));
     }
 
+    @Override
     public Iterator iterator() {
         return new WeakListIterator();
     }
 
+    @Override
     public int size() {
         removeReleased();
         return items.size();
     }
 
-    public java.lang.Object get(int index) {
-        return ((WeakReference) items.get(index)).get();
+    @Override
+    public synchronized T get(int index) {
+        return ((WeakReference<T>) items.get(index)).get();
     }
 
-    private void removeReleased() {
+    private synchronized void removeReleased() {
         for (Iterator it = items.iterator(); it.hasNext(); ) {
-            WeakReference ref = (WeakReference) it.next();
+            WeakReference<T> ref = (WeakReference<T>) it.next();
             if (ref.get() == null) items.remove(ref);
         }
     }
 
-    private class WeakListIterator implements Iterator {
+    private class WeakListIterator implements Iterator<T> {
 
         private int n;
         private int i;
@@ -76,14 +88,17 @@ public class WeakList extends AbstractList {
             i = 0;
         }
 
+        @Override
         public boolean hasNext() {
             return i < n;
         }
 
-        public Object next() {
+        @Override
+        public T next() {
             return get(i++);
         }
 
+        @Override
         public void remove() {
             throw new UnsupportedOperationException();
         }

@@ -5,13 +5,17 @@
  */
 package com.oracle.javase.articles.RobertEckstein.mvc;
 
+import static com.sun.jmx.mbeanserver.DefaultMXBeanMappingFactory.propertyName;
 import java.beans.PropertyChangeEvent;
 import java.beans.PropertyChangeListener;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import org.netbeans.modules.vcscore.util.WeakList;
 
 /**
- *  Abstract controller that holds reference to views and models.
+ *  Abstract controller that holds reference to multiple views and models.
+ *  The {@link AbstractController} is the main public interface and object for a
+ *  collection of models.  Views add themselves as event listeners.
  *
  * <blockquote>The primary difference between this design and the more traditional version
  *     of MVC is that the notifications of state changes in model objects are communicated
@@ -28,56 +32,103 @@ import java.util.ArrayList;
  * <ul>
  *   <li>Modified for template of the Model and the View to use.
  *          Abstract view was renamed from {@code AbstractViewPanel} to {@code ViewEventSink}.
- *   </li>
+ *   <li>  Since we hold only weak-refs to views, <strong>caller must hold a strong-ref,
+ *          otherwise the view could go disappear...!</strong>
  * </ul>
  *
  * @author Robert Eckstein
  * @author brian witt
  * @param <M> Superclass of models to manage.
  * @param <V> Superclass of views to alert.
+ * @see <a href="https://community.oracle.com/blogs/enicholas/2006/05/04/understanding-weak-references">weak object references</a>
  */
 public abstract class AbstractController<M extends AbstractModel, V extends ViewEventSink>
         implements PropertyChangeListener
 {
 
-    private final ArrayList<ViewEventSink>    registeredViews;
+    private final WeakList<ViewEventSink>    registeredViews;
     private final ArrayList<AbstractModel>    registeredModels;
 
+    /***
+     *  Create controller with empty view and model lists.
+     *  The controller is the central object that holds &quot;strong&quot;
+     *  references to models,
+     *  and &quot;weak&quot; references (Java 1.2) to the views.
+     */
     public AbstractController()
     {
-        registeredViews = new ArrayList<ViewEventSink>();
+        registeredViews = new WeakList<ViewEventSink>();
         registeredModels = new ArrayList<AbstractModel>();
     }
 
 
+    /***
+     *  Add one more model to the list of managed models.
+     *  The controller will add itself as the only property-change listener
+     *  (and will re-broadcast changes out to all views).
+     *
+     * @param model Model to add
+     */
     public void addModel(AbstractModel model)
     {
         registeredModels.add(model);
         model.addPropertyChangeListener(this);
     }
 
+    /***
+     *  Remove a prior-enrolled model from being managed by this controller.
+     *  First it severs the property-change listener hook into the model.
+     * @param model to remove, added already.
+     */
     public void removeModel(AbstractModel model)
     {
-        registeredModels.remove(model);
         model.removePropertyChangeListener(this);
+        registeredModels.remove(model);
     }
 
+    /***
+     *  Add a view (event sink) to be notified about property changes.
+     *  Since we hold only weak-refs to views, <strong>caller must hold a strong-ref,
+     *  otherwise the view could go disappear...!</strong>
+     *
+     * @param view view that will {@code modelPropertyChange()} callbacks.
+     */
     public void addView(ViewEventSink view)
     {
         registeredViews.add(view);
     }
 
+    /***
+     *  Disconnect event-sink from property-change events from the models managed by this controller.
+     *  This is a "courtesy call" since we hold weak references to views.
+     *  NB, if controller-object is only "reference" to a view-object, then the view-object
+     *  might already have been GC'ed.
+     *
+     * @param view to remove.
+     */
     public void removeView(ViewEventSink view)
     {
         registeredViews.remove(view);
     }
 
 
-    //  Use this to observe property changes from registered models
-    //  and propagate them on to all the views.
-
-
+    /***
+     * {@inheritDoc}
+     *
+     * <p> Iterates thru all registers and not-GC'ed views with a
+     *  {link #modelPropertyChange()} callback.
+     *  Views are held with weak-ref , so if larger application drops all
+     *  references to the view, then it is gone.
+     *
+     * @param evt containing property name, and old and new values.
+     */
     public void propertyChange(PropertyChangeEvent evt) {
+
+        //  Use this to observe property changes from registered models
+        //  and propagate them on to all the views.
+        //
+        //  The model calls here when a property changes.  This method
+        //  will broadcast out to interested views (event sinks).
 
         for (ViewEventSink view: registeredViews) {
             view.modelPropertyChange(evt);
@@ -90,10 +141,10 @@ public abstract class AbstractController<M extends AbstractModel, V extends View
      * to fire property changes back to the models. This method
      * uses reflection to inspect each of the model classes
      * to determine whether it is the owner of the property
-     * in question. If it isn't, a NoSuchMethodException is thrown,
+     * in question. If it isn't, a NoSuchMethodException is thrown (internally),
      * which the method ignores.
      *
-     * E.g. if {@link propertyName} is "TEXT_WEIGHT", then method tries to
+     * <p> E.g. if {@link propertyName} is "TEXT_WEIGHT", then method tries to
      * invoke {@code setTEXT_WEIGHT(&lt;newValue.getClass()&gt;)} on all models.
      *
      * @param propertyName = The name of the property.
